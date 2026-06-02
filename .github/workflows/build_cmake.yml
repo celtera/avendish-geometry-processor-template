@@ -1,0 +1,104 @@
+name: CMake build
+
+on: push
+
+# Geometry / mesh objects map onto these Avendish back-ends (see avnd_make_geometry):
+#
+#   * Godot GEOMETRY      -> a GDExtension Node producing an ArrayMesh
+#   * TouchDesigner SOP   -> a Surface Operator
+#   * TouchDesigner POP   -> a Particle Operator
+#   * ossia score         -> a geometry process (needs libossia; not exercised here)
+#
+# This workflow exercises all three native geometry back-ends:
+#   - godot-cpp is fetched automatically by CMake (no SDK to provide).
+#   - The TouchDesigner SOP/POP back-ends use the Custom Operator SDK headers from
+#     https://github.com/jcelerier/CustomOperatorSamples (its include/ directory ships
+#     the SOP base header *and* the experimental POP headers, POP_CPlusPlusBase.h +
+#     the POP-enabled CPlusPlus_Common.h).
+#
+# Max/MSP is intentionally NOT built: the Max (Jitter) binding only handles matrix /
+# texture outputs, and rejects geometry output ports at compile time, so geometry
+# objects cannot be emitted for Max.
+
+jobs:
+  build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {
+              name: "Ubuntu (clang)",
+              os: ubuntu-latest,
+              triple: "linux-clang-x86_64",
+              common_flags: "-DCMAKE_C_COMPILER=clang-18 \
+                             -DCMAKE_CXX_COMPILER=clang++-18",
+              dependencies: "sudo apt update ; \
+                             sudo apt install -y ninja-build clang-18 libstdc++-13-dev libboost-dev"
+            }
+          - {
+              name: "macOS (clang)",
+              os: macos-14,
+              triple: "macos-clang-aarch64",
+              common_flags: "",
+              dependencies: "brew install ninja boost"
+            }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # TouchDesigner Custom Operator SDK headers (SOP + experimental POP), consumed
+      # via its include/ directory. Avendish expects ${TOUCHDESIGNER_SDK_PATH}/include/.
+      - name: Checkout TouchDesigner SDK headers
+        uses: actions/checkout@v6
+        with:
+          repository: jcelerier/CustomOperatorSamples
+          # add-pop-headers ships the experimental POP headers (POP_CPlusPlusBase.h +
+          # POP-enabled CPlusPlus_Common.h) under include/, needed for the POP back-end.
+          # Switch back to the default branch once that branch is merged to main.
+          ref: add-pop-headers
+          path: touchdesigner-sdk
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          ${{ matrix.config.dependencies }}
+
+      - name: Build release
+        shell: bash
+        run: |
+          export BUILD_DIR=build-release
+          export INSTALL_DIR="$PWD/install"
+          mkdir -p "$INSTALL_DIR"
+          export VERBOSE=1
+
+          cmake -S "$PWD" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=1 \
+            -DTOUCHDESIGNER_SDK_PATH="$PWD/touchdesigner-sdk" \
+            ${{ matrix.config.common_flags }}
+
+          cmake --build "$BUILD_DIR"
+
+          echo " === build tree === "
+          ls -R "$BUILD_DIR"/godot "$BUILD_DIR"/td 2>/dev/null || true
+
+          shopt -s nullglob
+          for backend in godot td; do
+            [ -d "$BUILD_DIR/$backend" ] || continue
+            (
+              cd "$BUILD_DIR/$backend"
+              for file in *; do
+                cmake -E tar cf "$INSTALL_DIR/$backend-${{ matrix.config.triple }}-$file.zip" --format=zip -- "$file"
+              done
+            )
+          done
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.config.triple }}
+          path: |
+            install/*
