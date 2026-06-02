@@ -52,11 +52,15 @@ jobs:
                              -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld-20"
             }
           - {
+              # clang-cl (not cl): MSVC ABI (required by the TouchDesigner SDK) with the
+              # Clang front-end. Plain MSVC emits an external reference for Avendish's
+              # `extern const fake_object_for_indices` (used only in constexpr), which
+              # then fails to link; Clang correctly elides it, like on Linux/macOS.
               name: "Windows",
               os: windows-latest,
-              triple: "windows-msvc-x86_64",
-              dependencies: "choco install -y ninja",
-              common_flags: "-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl"
+              triple: "windows-clang-x86_64",
+              dependencies: "choco install -y ninja llvm",
+              common_flags: "-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl"
             }
           - {
               name: "macOS",
