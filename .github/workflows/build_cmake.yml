@@ -9,16 +9,24 @@ on: push
 #   * TouchDesigner POP   -> a Particle Operator
 #   * ossia score         -> a geometry process (needs libossia; not exercised here)
 #
-# This workflow exercises all three native geometry back-ends:
+# This workflow builds all three native geometry back-ends on Linux, Windows and macOS.
 #   - godot-cpp is fetched automatically by CMake (no SDK to provide).
 #   - The TouchDesigner SOP/POP back-ends use the Custom Operator SDK headers from
 #     https://github.com/jcelerier/CustomOperatorSamples (its include/ directory ships
 #     the SOP base header *and* the experimental POP headers, POP_CPlusPlusBase.h +
 #     the POP-enabled CPlusPlus_Common.h).
 #
-# Max/MSP is intentionally NOT built: the Max (Jitter) binding only handles matrix /
-# texture outputs, and rejects geometry output ports at compile time, so geometry
-# objects cannot be emitted for Max.
+# Toolchain notes (cf. the Avendish reference CI):
+#   - Avendish needs Boost >= 1.87, newer than Ubuntu's system Boost (1.83), so a
+#     header-only Boost 1.90 is downloaded on every platform and passed via BOOST_ROOT.
+#   - Avendish's C++23 reflection needs a recent compiler: Linux uses clang-20 from
+#     apt.llvm.org, macOS uses Xcode 26, Windows uses MSVC (cl) — which is also mandatory
+#     because the TouchDesigner SDK requires the MSVC ABI (it rejects MinGW/GNU).
+#   - Max/MSP is intentionally NOT built: the Max (Jitter) binding only handles matrix /
+#     texture outputs and rejects geometry output ports at compile time.
+
+env:
+  BOOST_URL: "https://github.com/ossia/score-sdk/releases/download/sdk31/boost_1_90_0.tar.gz"
 
 jobs:
   build:
@@ -29,30 +37,43 @@ jobs:
       matrix:
         config:
           - {
-              name: "Ubuntu (clang)",
-              os: ubuntu-latest,
+              name: "Linux",
+              os: ubuntu-24.04,
               triple: "linux-clang-x86_64",
-              common_flags: "-DCMAKE_C_COMPILER=clang-18 \
-                             -DCMAKE_CXX_COMPILER=clang++-18",
               dependencies: "sudo apt update ; \
-                             sudo apt install -y ninja-build clang-18 libstdc++-13-dev libboost-dev"
+                             curl -L https://apt.llvm.org/llvm.sh > llvm.sh ; \
+                             chmod +x ./llvm.sh ; \
+                             sudo ./llvm.sh 20 ; \
+                             sudo apt install -y ninja-build clang-20 lld-20",
+              common_flags: "-DCMAKE_C_COMPILER=clang-20 \
+                             -DCMAKE_CXX_COMPILER=clang++-20 \
+                             -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld-20 \
+                             -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld-20 \
+                             -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld-20"
             }
           - {
-              name: "macOS (clang)",
-              os: macos-14,
+              name: "Windows",
+              os: windows-latest,
+              triple: "windows-msvc-x86_64",
+              dependencies: "choco install -y ninja",
+              common_flags: "-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl"
+            }
+          - {
+              name: "macOS",
+              os: macos-26,
               triple: "macos-clang-aarch64",
-              common_flags: "",
-              dependencies: "brew install ninja boost"
+              dependencies: "brew install ninja",
+              common_flags: ""
             }
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       # TouchDesigner Custom Operator SDK headers (SOP + experimental POP), consumed
       # via its include/ directory. Avendish expects ${TOUCHDESIGNER_SDK_PATH}/include/.
       - name: Checkout TouchDesigner SDK headers
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: jcelerier/CustomOperatorSamples
           # add-pop-headers ships the experimental POP headers (POP_CPlusPlusBase.h +
@@ -61,10 +82,29 @@ jobs:
           ref: add-pop-headers
           path: touchdesigner-sdk
 
+      - name: Select Xcode 26 (macOS)
+        if: runner.os == 'macOS'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      # The TouchDesigner SDK requires the MSVC ABI; set up the MSVC environment so that
+      # cl / Ninja are usable on Windows.
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install dependencies
         shell: bash
         run: |
           ${{ matrix.config.dependencies }}
+
+      - name: Set up Boost
+        shell: bash
+        run: |
+          curl -fsSL "$BOOST_URL" -o boost.tar.gz
+          mkdir -p boost/include
+          tar -xzf boost.tar.gz --strip-components=1 --directory boost/include
 
       - name: Build release
         shell: bash
@@ -78,9 +118,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=1 \
             -DTOUCHDESIGNER_SDK_PATH="$PWD/touchdesigner-sdk" \
+            -DBOOST_ROOT="$PWD/boost" \
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
             ${{ matrix.config.common_flags }}
 
-          cmake --build "$BUILD_DIR"
+          # Build only the geometry back-ends (and their godot-cpp dependency), not
+          # Avendish's own example tools.
+          cmake --build "$BUILD_DIR" \
+            --target MyGeometry_SOP_td MyGeometry_POP_td MyGeometry_GEOMETRY_godot
 
           echo " === build tree === "
           ls -R "$BUILD_DIR"/godot "$BUILD_DIR"/td 2>/dev/null || true
@@ -91,13 +137,14 @@ jobs:
             (
               cd "$BUILD_DIR/$backend"
               for file in *; do
+                [ -f "$file" ] || continue
                 cmake -E tar cf "$INSTALL_DIR/$backend-${{ matrix.config.triple }}-$file.zip" --format=zip -- "$file"
               done
             )
           done
 
       - name: Archive production artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.config.triple }}
           path: |
