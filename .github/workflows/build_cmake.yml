@@ -12,4 +12,4 @@ jobs:
         os: [ubuntu-24.04, windows-latest, macos-26]
     steps:
       - uses: actions/checkout@v4
-      - uses: ossia/actions/avendish-template@avendish-template-action
+      - uses: ossia/actions/avendish-template@master
