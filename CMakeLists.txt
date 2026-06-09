@@ -1,37 +1,37 @@
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 
 project(MyGeometry CXX)
 
-include(dependencies.cmake)
-
-add_library(MyGeometry STATIC
-  src/Model.cpp
-  src/Model.hpp
-  src/UI.hpp
-  src/Processor.hpp
-)
-
-# avnd_make_geometry instantiates the geometry / mesh back-ends:
-#  - ossia (for use inside ossia score)
-#  - TouchDesigner SOP (Surface Operator)
-#  - TouchDesigner POP (Particle Operator)
-#  - Godot GDExtension (a Node3D producing an ArrayMesh)
-#
-# The relevant SDK paths must be passed to CMake for the optional back-ends to
-# be built, see the README. Back-ends whose SDK is not found are silently skipped.
-avnd_make_geometry(
-  TARGET MyGeometry
-  MAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/Processor.hpp"
-  MAIN_CLASS MyGeometry
-  C_NAME my_geometry
-)
-
-# Workaround: when godot-cpp is pulled in via FetchContent, its only targets are
-# `godot-cpp` (+ alias `godot::cpp`) — there is no `godot-cpp::godot-cpp`. Avendish's
-# avnd_make_godot doesn't always resolve the target, so the generated headers under
-# <godot-cpp-build>/gen/include never make it onto the GDExtension's include path and
-# compilation fails with "godot_cpp/classes/node.hpp not found". Re-linking the target
-# here (at a scope where it is visible) propagates godot-cpp's PUBLIC include dirs.
-if(TARGET MyGeometry_GEOMETRY_godot AND TARGET godot-cpp)
-  target_link_libraries(MyGeometry_GEOMETRY_godot PRIVATE godot-cpp)
+# Use the Avendish the host already provides (e.g. ossia score); otherwise fetch it.
+# The same CMakeLists builds this as an ossia/score add-on or as a standalone object.
+find_package(Avendish QUIET)
+if(NOT Avendish_FOUND)
+  include(FetchContent)
+  FetchContent_Declare(
+    Avendish
+    GIT_REPOSITORY "https://github.com/celtera/avendish"
+    GIT_TAG 49ba4e491e3ac1c9c775bdc911749f6328fa8b52)
+  FetchContent_Populate(Avendish)
+  list(APPEND CMAKE_PREFIX_PATH "${avendish_SOURCE_DIR}")
+  find_package(Avendish REQUIRED)
 endif()
+
+avnd_addon_init(NAME MyGeometry)
+
+# CATEGORY geometry: the geometry / mesh back-ends -- ossia, Max/MSP, TouchDesigner SOP
+# and POP, and Godot (a Node3D producing an ArrayMesh). In a score build only the ossia
+# process is produced. Back-ends whose SDK is absent are silently skipped.
+# (For a single TD operator type, use e.g. BACKENDS godot:GEOMETRY touchdesigner:POP.)
+avnd_addon_object(
+  BASE MyGeometry
+  C_NAME my_geometry
+  CLASS MyGeometry
+  CATEGORY geometry
+  MAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/Processor.hpp"
+  SOURCES
+    src/Model.cpp
+    src/Model.hpp
+    src/UI.hpp
+    src/Processor.hpp)
+
+avnd_addon_finalize(NAME MyGeometry UUID 95b84273-50ed-4968-b32c-5c82bf3d184c VERSION 1.0.0)
