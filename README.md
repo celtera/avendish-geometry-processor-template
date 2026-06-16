@@ -11,7 +11,7 @@ and produces a mesh (vertices, normals, colors, indices) on its output.
 
 ## What gets built
 
-The `avnd_make_geometry(...)` macro in `CMakeLists.txt` instantiates the geometry
+The `avnd_addon_object(... CATEGORY geometry)` call in `CMakeLists.txt` instantiates the geometry
 back-ends. From `src/Model.hpp` you get:
 
 | Back-end | Object kind | SDK required |
