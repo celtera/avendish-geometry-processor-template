@@ -18,15 +18,17 @@ endif()
 
 avnd_addon_init(NAME MyGeometry)
 
-# CATEGORY geometry: the geometry / mesh back-ends -- ossia, Max/MSP, TouchDesigner SOP
-# and POP, and Godot (a Node3D producing an ArrayMesh). In a score build only the ossia
-# process is produced. Back-ends whose SDK is absent are silently skipped.
-# (For a single TD operator type, use e.g. BACKENDS godot:GEOMETRY touchdesigner:POP.)
+# The geometry / mesh back-ends -- ossia, Max/MSP, TouchDesigner SOP and POP, and Godot
+# (a Node3D producing an ArrayMesh) -- plus `dump`, the plain-C++ introspection target
+# the portability CI builds. Listed explicitly (the geometry/texture CATEGORY presets,
+# unlike object/audioplug/all, don't pull in dump). In a score build the back-end list
+# is ignored and only the ossia process is produced. Back-ends whose SDK is absent are
+# silently skipped.
 avnd_addon_object(
   BASE MyGeometry
   C_NAME my_geometry
   CLASS MyGeometry
-  CATEGORY geometry
+  BACKENDS dump ossia max:GEOMETRY touchdesigner:SOP touchdesigner:POP godot:GEOMETRY
   MAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/Processor.hpp"
   SOURCES
     src/Model.cpp
