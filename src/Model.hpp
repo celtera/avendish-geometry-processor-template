@@ -197,3 +197,8 @@ inline void MyGeometry::operator()()
   outputs.geometry.dirty_mesh = true;
   outputs.geometry.dirty_transform = true;
 }
+
+// Pull in the UI so MyGeometry::ui is complete wherever this class header is
+// included -- the score plugin generator includes the class header, not the
+// MAIN_FILE, and needs the full ui type to build the process's layer.
+#include "UI.hpp"
