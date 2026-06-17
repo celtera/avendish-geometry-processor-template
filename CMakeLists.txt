@@ -16,7 +16,7 @@ if(NOT Avendish_FOUND)
   find_package(Avendish REQUIRED)
 endif()
 
-avnd_addon_init(NAME MyGeometry)
+avnd_addon_init(NAME MyGeometryAddon)
 
 # The geometry / mesh back-ends -- ossia, Max/MSP, TouchDesigner SOP and POP, and Godot
 # (a Node3D producing an ArrayMesh) -- plus `dump`, the plain-C++ introspection target
@@ -25,7 +25,7 @@ avnd_addon_init(NAME MyGeometry)
 # is ignored and only the ossia process is produced. Back-ends whose SDK is absent are
 # silently skipped.
 avnd_addon_object(
-  BASE MyGeometry
+  BASE MyGeometryAddon
   C_NAME my_geometry
   CLASS MyGeometry
   BACKENDS dump ossia max:GEOMETRY touchdesigner:SOP touchdesigner:POP godot:GEOMETRY
@@ -36,4 +36,4 @@ avnd_addon_object(
     src/UI.hpp
     src/Processor.hpp)
 
-avnd_addon_finalize(NAME MyGeometry UUID 95b84273-50ed-4968-b32c-5c82bf3d184c VERSION 1.0.0)
+avnd_addon_finalize(NAME MyGeometryAddon UUID 95b84273-50ed-4968-b32c-5c82bf3d184c VERSION 1)
