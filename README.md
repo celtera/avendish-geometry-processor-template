@@ -1,5 +1,7 @@
 # Avendish geometry / mesh template
 
+[![Build](https://github.com/celtera/avendish-geometry-processor-template/actions/workflows/builds.yaml/badge.svg)](https://github.com/celtera/avendish-geometry-processor-template/actions/workflows/builds.yaml)
+
 This provides a basic, canonical template for making **geometry / mesh** objects with
 [Avendish](https://github.com/celtera/avendish): a single C++ object that generates a
 mesh and is compiled, without rewrite, to several host plug-in formats.
